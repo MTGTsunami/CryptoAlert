@@ -3,3 +3,6 @@
 
 # py cache
 *.pyc
+
+# mac OS
+./DS_Store
