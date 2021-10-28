@@ -18,7 +18,6 @@ class AlertEmail:
     This serves as a helper class to generate/modify email header & contends,
     as well as to initialize Google STMP server and to send alert emails.
     """
-    _USERNAME = "youaretheappleofmyeye19@gmail.com"
     DEFAULT_CONTENT = "This is a test email sent by Python Crypto Alert Script"
     DEFAULT_RECEIVING_ADDRESS = "mtgtsunami@yahoo.com"
     DEFAULT_SENDING_ADDRESS = "youaretheappleofmyeye19@gmail.com"
@@ -34,13 +33,17 @@ class AlertEmail:
         self.msg.set_content(content)
         self.server = None
 
-        # TODO: The password can be fetched through POST request.
+        # TODO: The credentials can be fetched through POST request.
         key_file_path = r"C:\Users\\" + \
                         getpass.getuser() + \
                         r"\Documents\crypto_keys\keys.txt" if platform.system() == "Windows" else \
                         "/Users/" + getpass.getuser() + "/Documents/crypto_keys/key"
         with open(key_file_path, "r") as f:
-            self._password = f.readline()
+            for i, line in enumerate(f):
+                if i == 0:
+                    self._username = line
+                if i == 1:
+                    self._password = line
 
     @property
     def send_from(self) -> str:
@@ -48,7 +51,6 @@ class AlertEmail:
 
     @send_from.setter
     def send_from(self, address: str) -> None:
-        print("Reset the email send address!")
         del self.msg["From"]
         self.msg["From"] = address
 
@@ -58,7 +60,6 @@ class AlertEmail:
 
     @send_to.setter
     def send_to(self, address: str) -> None:
-        print("Reset the email receive address!")
         del self.msg["to"]
         self.msg["to"] = address
 
@@ -68,7 +69,6 @@ class AlertEmail:
 
     @subject.setter
     def subject(self, subject: str) -> None:
-        print("Reset the email subject!")
         del self.msg["Subject"]
         self.msg["Subject"] = subject
 
@@ -78,7 +78,6 @@ class AlertEmail:
 
     @content.setter
     def content(self, content: str) -> None:
-        print("Reset the email content!")
         self.msg.set_content(content)
 
     def _initialize_email_server(self) -> None:
@@ -116,7 +115,7 @@ class AlertEmail:
     def send_email(self) -> None:
         self._initialize_email_server()
         self.server.starttls()
-        self.server.login(user=AlertEmail._USERNAME, password=self._password)
+        self.server.login(user=self._username, password=self._password)
         self.server.send_message(self.msg)
         self._quit_email_server()
 
@@ -130,11 +129,15 @@ class AlertEmail:
 
         key_file_path = r"C:\Users\\" + getpass.getuser() + r"\Documents\crypto_keys\keys.txt"
         with open(key_file_path, "r") as f:
-            _password = f.readline()
+            for i, line in enumerate(f):
+                if i == 0:
+                    _username = line
+                if i == 1:
+                    _password = line
 
         server = SMTP(host=AlertEmail.GOOGLE_SMTP_SERVER, port=AlertEmail.PORT)
         server.starttls()
-        server.login(user=AlertEmail._USERNAME, password=_password)
+        server.login(user=_username, password=_password)
         server.send_message(msg)
         server.quit()
 
