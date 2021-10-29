@@ -112,7 +112,7 @@ class CoinbaseClient:
         if self.currency_list == CoinbaseClient.BACKUP_CURRENCY_LIST:
             self.email_client.reconstruct_email(
                 subject="Fall back to use back up crypto list due to failure in obtaining full version currency list.",
-                content="It's hard to parse the crypto list from exchange_rates API response, " +
+                content="It's impossible to parse the crypto list from exchange_rates API response, " +
                         "if the currency list is not in its full version. \n" +
                         "\n" +
                         "Fall back to use back up crypto list: {} instead".format(
@@ -261,6 +261,7 @@ class CoinbaseClient:
 
 
 if __name__ == "__main__":
+    # TODO: Will be replaced by unit tests
     # Tests
     client = CoinbaseClient()
     print(client.get_crypto_price("BTC", "BTC", "spot"))
