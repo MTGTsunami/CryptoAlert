@@ -146,14 +146,8 @@ if __name__ == "__main__":
     # TODO: Will be replaced by unit tests
     # Tests
     c = AlertEmail(
-        receive_address=AlertEmail.DEFAULT_RECEIVING_ADDRESS,
+        receive_address="jw.zhang86@gmail.com",
         subject="hello handsome boy!",
         content="what a beautiful day!"
-    )
-    print(AlertEmail.__doc__)
-    c.send_email()
-    c.reconstruct_email(
-        receive_address="kerui@umich.edu",
-        subject="hello beautiful girl!"
     )
     c.send_email()

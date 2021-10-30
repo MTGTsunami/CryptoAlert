@@ -1,30 +1,12 @@
 import requests
 from requests.exceptions import RequestException
 
+import time
+
 from utils.emails import AlertEmail
 
 
 class ResponseNoDataException(RequestException):
-    pass
-
-
-class MarketTypeNotAvailableException(Exception):
-    pass
-
-
-class CryptoNotAvailableException(Exception):
-    pass
-
-
-class CurrencyNotAvailableException(Exception):
-    pass
-
-
-class CryptoDuplicateException(Exception):
-    pass
-
-
-class CurrencyDuplicateException(Exception):
     pass
 
 
@@ -129,7 +111,7 @@ class CoinbaseClient:
                 crypto_list.add(k)
         return crypto_list
 
-    def get_coinbase_server_time(self) -> (str, str):
+    def _get_coinbase_server_time(self) -> (str, str):
         r = requests.get("https://api.coinbase.com/v2/time")
         if r.status_code != 200:
             error_body = r.json()
@@ -156,12 +138,12 @@ class CoinbaseClient:
         data = r.json().get("data")
         return data.get("iso"), data.get("epoch")
 
+    def get_server_time_in_local_timezone(self) -> str:
+        _, server_time = self._get_coinbase_server_time()
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(server_time)))
+
     def get_crypto_price(self, crypto: str, currency: str, market_type: str) -> float:
         market_type = market_type.lower()
-        need_swap = self.validate_input_for_getting_crypto_price(crypto, currency, market_type)
-        if need_swap:
-            crypto, currency = currency, crypto
-
         url = "https://api.coinbase.com/v2/prices/" + crypto + "-" + currency + "/" + market_type
         r = requests.get(url)
         if r.status_code != 200:
@@ -188,80 +170,9 @@ class CoinbaseClient:
 
         return float(r.json()["data"]["amount"])
 
-    def validate_input_for_getting_crypto_price(self, crypto: str, currency: str, market_type: str) -> bool:
-        if market_type not in CoinbaseClient.MARKET_TYPE_LIST:
-            self.email_client.reconstruct_email(
-                subject="The market type you chose is not in the available type list! Service failed to start!",
-                content="Please choose a market type among: {} \n".format(CoinbaseClient.MARKET_TYPE_LIST)
-            )
-            self.email_client.send_email()
-            raise MarketTypeNotAvailableException(
-                "The market type you chose is not in the available type list!"
-            )
-
-        # According to the response body from Coinbase API: https://developers.coinbase.com/api/v2#prices
-        # the order of the currency pair should only be crypto-currency.
-        # Setting Currency-crypto pair, currency-currency pair, crypto-crypto pair
-        # in the request URL will get a non 200 response.
-        is_crypto_in_currency_list = False
-        if crypto not in self.crypto_list:
-            if crypto not in self.currency_list:
-                self.email_client.reconstruct_email(
-                    subject="The crypto you chose is not in the available crypto list! Service failed to start!",
-                    content="Please choose a crypto among: {} \n".format(self.crypto_list)
-                )
-                self.email_client.send_email()
-                raise CryptoNotAvailableException(
-                    "The crypto you chose is not in the available crypto list!"
-                )
-            else:
-                # The crypto has been falsely regarded as a currency.
-                is_crypto_in_currency_list = True
-
-        is_currency_in_crypto_list = False
-        if currency not in self.currency_list:
-            if currency not in self.crypto_list:
-                self.email_client.reconstruct_email(
-                    subject="The currency you chose is not in the available currency list! Service failed to start!",
-                    content="Please choose a currency among: {} \n".format(self.currency_list)
-                )
-                self.email_client.send_email()
-                raise CurrencyNotAvailableException(
-                    "The currency you chose is not in the available currency list!"
-                )
-            else:
-                # The currency has been falsely regarded as a crypto.
-                is_currency_in_crypto_list = True
-
-        if crypto in self.crypto_list and currency in self.crypto_list:
-            self.email_client.reconstruct_email(
-                subject="The currency and crypto you chose are both in the available crypto list! " +
-                        "Service failed to start!",
-                content="Please choose a currency among: {} \n".format(self.currency_list) +
-                        "And a crypto among: {} \n".format(self.crypto_list)
-            )
-            self.email_client.send_email()
-            raise CryptoDuplicateException(
-                "The currency and crypto you chose are both in the available crypto list!"
-            )
-
-        if crypto in self.currency_list and currency in self.currency_list:
-            self.email_client.reconstruct_email(
-                subject="The currency and crypto you chose are both in the available currency list! " +
-                        "Service failed to start!",
-                content="Please choose a currency among: {} \n".format(self.currency_list) +
-                        "And a crypto among: {} \n".format(self.crypto_list)
-            )
-            self.email_client.send_email()
-            raise CurrencyDuplicateException(
-                "The currency and crypto you chose are both in the available currency list!"
-            )
-
-        return True if is_crypto_in_currency_list and is_currency_in_crypto_list else False
-
 
 if __name__ == "__main__":
     # TODO: Will be replaced by unit tests
     # Tests
     client = CoinbaseClient()
-    print(client.get_crypto_price("BTC", "BTC", "spot"))
+    print(client.get_server_time_in_local_timezone())
