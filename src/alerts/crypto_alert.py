@@ -32,12 +32,10 @@ class CryptoAlert:
     This is the core class to generate a script for a specific user to monitor a certain currency-crypto pair,
     and to send alert emails to that user if the up/down rate in a defined amount of time has surpassed the threshold.
     """
-    DEFAULT_CACHE_SIZE = 720
 
     def __init__(self, username: str, crypto: str, currency: str, market_type: str, time_window: int, threshold: float):
         """
-        :param int time_window: The specific amount of time (minute) the user wants to monitor. We only support time
-        window <= 720 mins (12 h)
+        :param int time_window: The specific amount of time (minute) the user wants to monitor.
 
         :param int threshold: The up/down percentage (100 * actual percentage) threshold of a currency-crypto pair in
         the time window that the user wants to get alarmed.
@@ -51,16 +49,14 @@ class CryptoAlert:
         self.client = CoinbaseClient(self.username)
         self._validate_input()
 
-        # I/O is too slow for storing server time and the corresponding crypto price when the accuracy
-        # is of the time window is set to around 1 min (60s), thus using memory cache instead.
-        self.cache = {}
-        for i in range(CryptoAlert.DEFAULT_CACHE_SIZE):
-            self.cache[i] = {}
+        self.data_cache = []
+        for i in range(self.time_window + 1):
+            self.data_cache.append({})
 
     def __str__(self) -> str:
         return "This is the crypto alert system configured for user: {}".format(self.username)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> None:
         self._core_algorithm()
 
     def _validate_input(self) -> None:
@@ -134,18 +130,6 @@ class CryptoAlert:
                 "The currency and crypto you chose are both in the available currency list!"
             )
 
-        # Time window value check
-        if self.time_window > CryptoAlert.DEFAULT_CACHE_SIZE or self.time_window < 1:
-            self.client.email_client.reconstruct_email(
-                subject="Invalid time window value!",
-                content="This time window {} min is currently not supported. Please choose a value between 1 min and "
-                        "720 min.".format(self.time_window)
-            )
-            self.client.email_client.send_email()
-            raise InputValueNotSupportedException(
-                "Invalid time window value!"
-            )
-
         # Threshold value check
         if self.threshold <= 0:
             self.client.email_client.reconstruct_email(
@@ -160,54 +144,71 @@ class CryptoAlert:
         if is_crypto_in_currency_list and is_currency_in_crypto_list:
             self.crypto, self.currency = self.currency, self.crypto
 
-    def _core_algorithm(self):
+    def _core_alert_engine(self, current_price: float, last_price: float, current_time: str, last_time: str) -> None:
+        percentage = (current_price - last_price) / last_price * 100
+        is_up = False if percentage <= 0 else True
+        if abs(percentage) >= self.threshold:
+            self.client.email_client.reconstruct_email(
+                subject="{}!!! {} price in {} has gone {} in the last {} minutes".format(
+                    "Great News" if is_up else "Bad News",
+                    self.crypto,
+                    self.currency,
+                    "up" if is_up else "down",
+                    self.time_window
+                ),
+                content="Attention! {} price has gone {} {} percent from {} {} to {} {},".format(
+                    self.crypto,
+                    "up" if is_up else "down",
+                    round(percentage, 3),
+                    last_price,
+                    self.currency,
+                    current_price,
+                    self.currency
+                ) + "from {} to {}, breaking the threshold percentage of {}".format(
+                    last_time,
+                    current_time,
+                    self.threshold
+                )
+            )
+            self.client.email_client.send_email()
+
+    # TODO: Could be improved by dynamic programming.
+    def _core_algorithm(self) -> None:
         while True:
-            for i in range(CryptoAlert.DEFAULT_CACHE_SIZE):
+            for i in range(self.time_window + 1):
                 price = self.client.get_crypto_price(self.crypto, self.currency, self.market_type)
                 time = self.client.get_server_time_in_local_timezone()
+                self.data_cache[i] = {"price": price, "time": time}
 
-                target_index = i - self.time_window
-                if target_index < 0:
-                    target_index = i + CryptoAlert.DEFAULT_CACHE_SIZE - self.time_window
-                last_data = self.cache[target_index]
-                self.cache[i] = {"price": price, "time": time}
-
-                # Cache is not full (first 720 min after the alert system starts)
-                if not last_data:
-                    print(self.cache)
-                    sleep(60)
-                    continue
-                else:
-                    # If the price of the chosen crypto is up in the defined time window.
-                    price_diff = price - last_data["price"]
-                    is_up = False if price_diff <= 0 else True
-                    percentage = abs(price_diff) / last_data["price"] * 100
-                    if percentage >= self.threshold:
-                        self.client.email_client.reconstruct_email(
-                            subject="{}!!! {} price in {} was going {} in the last {} minutes".format(
-                                "Great News" if is_up else "Bad News",
-                                self.crypto,
-                                self.currency,
-                                "up" if is_up else "down",
-                                self.time_window
-                            ),
-                            content="Attention! {} price was going {} {} percent from {} {} to {} {},".format(
-                                self.crypto,
-                                "up" if is_up else "down",
-                                percentage,
-                                last_data["price"],
-                                self.currency,
-                                price,
-                                self.currency
-                            ) + "from {} to {}, breaking the threshold percentage of {}".format(
-                                last_data["time"],
-                                time,
-                                self.threshold
-                            )
+                # When data cache is not full (in the beginning, no cache override has ever happened)
+                if not self.data_cache[-1]:
+                    for j in range(i):
+                        self._core_alert_engine(
+                            current_price=self.data_cache[i]["price"],
+                            last_price=self.data_cache[j]["price"],
+                            current_time=self.data_cache[i]["time"],
+                            last_time=self.data_cache[j]["time"]
                         )
-                        self.client.email_client.send_email()
 
-                print(self.cache)
+                # When data cache is full (override of cache has ever happened)
+                else:
+                    for j in range(i + 1 if i != self.time_window else 0, self.time_window + 1):
+                        self._core_alert_engine(
+                            current_price=self.data_cache[i]["price"],
+                            last_price=self.data_cache[j]["price"],
+                            current_time=self.data_cache[i]["time"],
+                            last_time=self.data_cache[j]["time"]
+                        )
+
+                    for j in range(i):
+                        self._core_alert_engine(
+                            current_price=self.data_cache[i]["price"],
+                            last_price=self.data_cache[j]["price"],
+                            current_time=self.data_cache[i]["time"],
+                            last_time=self.data_cache[j]["time"]
+                        )
+                # Sleep for 1 min
+                print(self.data_cache)
                 sleep(60)
 
 
@@ -218,6 +219,6 @@ if __name__ == "__main__":
         currency="USD",
         market_type="spot",
         time_window=15,
-        threshold=0.2
+        threshold=0.5
     )
     alert_system()
